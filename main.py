@@ -197,7 +197,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-app.mount("/images", StaticFiles(directory=os.path.join(BASE, "images")), name="images")
+
+_images_dir = os.path.join(BASE, "images")
+if not os.path.exists(_images_dir):
+    os.makedirs(_images_dir, exist_ok=True)
+    print(f"[startup] Created missing images directory: {_images_dir}")
+try:
+    app.mount("/images", StaticFiles(directory=_images_dir), name="images")
+except Exception as e:
+    print(f"[startup] !!! Could not mount /images: {e}")
 
 
 @app.get("/")
@@ -206,14 +214,17 @@ async def root():
 
 
 def has_face(jpeg_bytes: bytes) -> bool:
-    arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        return False
-    if CASCADE is not None:
-        return len(CASCADE.detectMultiScale(img, scaleFactor=1.15, minNeighbors=4, minSize=(60, 60))) > 0
-    mean_brightness = float(np.mean(img))
-    return mean_brightness > 25
+    try:
+        arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return False
+        if CASCADE is not None:
+            return len(CASCADE.detectMultiScale(img, scaleFactor=1.15, minNeighbors=4, minSize=(60, 60))) > 0
+        mean_brightness = float(np.mean(img))
+        return mean_brightness > 25
+    except Exception:
+        return True
 
 
 async def _post_with_retry(url, *, headers=None, json_body=None, files=None, data=None, max_retries=3):
